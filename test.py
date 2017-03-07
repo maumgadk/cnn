@@ -3,9 +3,6 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 
-fn = 'model.txt'
-f = open(fn, 'r')
-dat = f.readlines()
 
 class nn:
     def __init__(self,num_w_fltr, num_b_fltr, weight, bias):
@@ -13,6 +10,21 @@ class nn:
         self.num_b_fltr = num_b_fltr
         self.weight = weight
         self.bias = bias
+
+
+class nn_img:
+    def __init__(self):
+        self.images = None
+        self.labels = None
+        self.batch_idx = 0
+
+    def next_batch(self, batch_size):
+        return self.images[self.batch_idx: self.batch_idx + batch_size ]
+
+class imgData:
+    def __init__(self):
+        self.test = None
+        self.train = None
 
 
 def genCNNParameter(dat):
@@ -123,6 +135,74 @@ def testModel(NNlayer, imY, nLayer=20):
     return res
 
 
+def weight_variable(shape):
+  initial = tf.truncated_normal(shape, stddev=0.1)
+  return tf.Variable(initial)
+
+
+def bias_variable(shape):
+  initial = tf.constant(0.1, shape=shape)
+  return tf.Variable(initial)
+
+
+def trainModel(NNlayer, img_data, img_shape):
+    """
+
+    :param NNlayer: data structure for convolutional neural network
+    :param img_data: image structure for training and test
+    :param img_shape: dimension of image (height, width)
+    :return: accuracy of training result
+    """
+    nLayer = len(NNlayer) #number of layer
+
+    dim=img_shape
+    features = tf.placeholder('half', [dim[0], dim[1]], name='Input')
+    input_layer = tf.reshape(features, [1, dim[0], dim[1] , 1])
+    rawInput = tf.reshape(features, [1, dim[0], dim[1], 1])
+
+    ref_img = tf.placeholder('half', [dim[0], dim[1]], name='result')
+    y_ = tf.reshape(ref_img, [1, dim[0], dim[1] , 1])
+
+    w = dict()
+    b = dict()
+
+    for i, layer in enumerate(NNlayer[:nLayer]):
+        nFilter = int(layer.num_w_fltr[1])
+        nChannel = int(layer.num_w_fltr[0])
+        nBias = int(layer.num_b_fltr[0])
+
+        w[i] = weight_variable([3, 3, nChannel, nFilter])
+        b[i] = bias_variable([nBias])
+
+        x = tf.nn.conv2d(input_layer, filter=w[i], strides=[1, 1, 1, 1], padding='SAME', name="Conv" + str(i))
+        conv = tf.nn.bias_add(x, b[i])
+
+        if i < (len(NNlayer) - 1):
+            conv = tf.nn.relu(conv)
+        input_layer = conv
+
+    result = conv + rawInput
+
+    cross_entropy = -tf.reduce_sum(y_ * tf.log(result))
+    train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+    correct_prediction = tf.equal(tf.argmax(result, 1), tf.argmax(y_, 1))
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+
+    sess=tf.Session()
+    sess.run(tf.global_variables_initializer())
+
+    for i in range(20000):
+        batch = img_data.train.next_batch(50)
+        if i % 100 == 0:
+            train_accuracy = sess.run(accuracy, feed_dict={features: batch[0], ref_img: batch[1]})
+            print("step %d, training accuracy %g" % (i, train_accuracy))
+        sess.run(train_step, feed_dict={x: batch[0], y_: batch[1] })
+
+    res = sess.run(accuracy, feed_dict={x: img_data.test.images, y_: img_data.test.labels})
+
+
+    return res
+
 
 def showResult(resImg):
     img = resImg.astype('uint8')
@@ -141,22 +221,42 @@ def calcPSNR(img1, img2):
 
 numLayer = 20
 
-fn  = 'baby_GT.bmp'
-NN= genCNNParameter(dat)
-im = normalize(fn)
-result = testModel(NN, im, numLayer)
+def test_main():
 
-resImg = result[0, :, :, 0]*255
-resImg = np.clip(resImg,0,255)
+    fn = 'model.txt'
+    f = open(fn, 'r')
+    dat = f.readlines()
 
-Y, Cb, Cr = getYCbCr(fn)
-colorImg = np.ndarray((Y.shape[0], Y.shape[1], 3),dtype="uint8")
-colorImg[:,:,0]=resImg
-colorImg[:,:,1]=Cb
-colorImg[:,:,2]=Cr
+    NN= genCNNParameter(dat)
 
-print 'PSNR of NN: ', calcPSNR(Y, resImg), 'dB'
-print 'PSNR of Bicubic', calcPSNR(Y, im*255), 'dB'
+    img_fn = 'baby_GT.bmp'
+    im = normalize(img_fn)
 
-showResult(colorImg)
+    result = testModel(NN, im, numLayer)
+
+    resImg = result[0, :, :, 0]*255
+    resImg = np.clip(resImg,0,255)
+
+    Y, Cb, Cr = getYCbCr(img_fn)
+    colorImg = np.ndarray((Y.shape[0], Y.shape[1], 3),dtype="uint8")
+    colorImg[:,:,0]=resImg
+    colorImg[:,:,1]=Cb
+    colorImg[:,:,2]=Cr
+
+    print 'PSNR of NN: ', calcPSNR(Y, resImg), 'dB'
+    print 'PSNR of Bicubic', calcPSNR(Y, im*255), 'dB'
+
+    showResult(colorImg)
+
+
+def train_main():
+
+    #Data preparation
+    iData = None
+    nnLayer = None
+    imgShape = None
+
+    result = trainModel(iData, nnLayer, imgShape)
+    print("test accuracy %g"%result)
+
 
