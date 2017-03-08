@@ -1,3 +1,4 @@
+#-*- encoding: utf-8 -*-
 import math
 import tensorflow as tf
 import numpy as np
@@ -180,12 +181,12 @@ def trainModel(NNlayer, img_data, img_shape):
     # training image의 해상도가 모두 다른데 어떻게?
     # 3가지의 scale에 대해 training하는 것 같은데 2,3,4
     dim=img_shape
-    features = tf.placeholder('float', [-1, dim[0], dim[1]], name='TrInput')
-    input_layer = tf.reshape(features, [-1, dim[0], dim[1] , 1])
-    rawInput = tf.reshape(features, [-1, dim[0], dim[1], 1])
+    features = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='TrInput')
+    input_layer = tf.reshape(features, [ -1, dim[0], dim[1] , 1])
+    rawInput = tf.reshape(features, [ -1, dim[0], dim[1], 1])
 
-    ref_img = tf.placeholder('float', [dim[0], dim[1]], name='result')
-    y_ = tf.reshape(ref_img, [-1, dim[0], dim[1] , 1])
+    ref_img = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='result')
+    y_ = tf.reshape(ref_img, [ -1, dim[0], dim[1] , 1])
 
     w = dict()
     b = dict()
