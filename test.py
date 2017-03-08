@@ -1,11 +1,10 @@
-# coding: utf-8
-import tensorflow as tf
 import numpy as np
 from PIL import Image
 
 
-class nn:
+class cnn:
     """
+    CNN layer parameter 
     
     """
     def __init__(self,num_w_fltr, num_b_fltr, weight, bias):
@@ -16,19 +15,34 @@ class nn:
 
 
 class nn_img:
-    def __init__(self):
-        self.images = None
-        self.labels = None
+    def __init__(self, images, labels):
+        self.images = images
+        self.labels = labels
         self.batch_idx = 0
 
     def next_batch(self, batch_size):
         self.batch_idx = self.batch_idx + batch_size
-        return self.images[self.batch_idx - batch_size : self.batch_idx ]
+        return (self.images[self.batch_idx - batch_size : self.batch_idx ], self.labels[self.batch_idx - batch_size : self.batch_idx ])
 
 class imgData:
-    def __init__(self):
-        self.test = None
-        self.train = None
+    def __init__(self, test_h5, train_h5):
+        self.test = nn_img(test_h5['data'], test_h5['label'])
+        self.train = nn_img(train_h5['data'], train_h5['label'])
+
+def setCNNParameter():
+    num_layer = 20
+    NNlayer = []
+    for i in range(num_layer):
+        if i ==0:
+            layer = cnn((1,64),(64,1), None, None)
+        elif i==20:
+            #(c,f,b,1)
+            layer = cnn((64,1),(1,1), None, None)
+        else:
+            layer = cnn((64,64),(64,1), None, None)
+        NNlayer.append(layer)
+
+    return NNlayer
 
 
 def genCNNParameter(dat):
@@ -39,6 +53,7 @@ def genCNNParameter(dat):
 
         #fn1: number of channel
         #fn2: number of filter
+        #
         head = 4
         fw, fh, fn1, fn2 = npdat2[:head].astype("int32")
 
@@ -59,7 +74,7 @@ def genCNNParameter(dat):
         #print i, 'weigh: ', weight.shape
         #weight = np.reshape(weight, dsize)
 
-        layer = nn((fn1, fn2), (bias1, bias2), weight, bias)
+        layer = cnn((fn1, fn2), (bias1, bias2), weight, bias)
 
         NNlayer.append(layer)
 
@@ -158,20 +173,22 @@ def trainModel(NNlayer, img_data, img_shape):
     """
     nLayer = len(NNlayer) #number of layer
 
+    # training image의 해상도가 모두 다른데 어떻게?
+    # 3가지의 scale에 대해 training하는 것 같은데 2,3,4
     dim=img_shape
     features = tf.placeholder('half', [dim[0], dim[1]], name='Input')
-    input_layer = tf.reshape(features, [1, dim[0], dim[1] , 1])
-    rawInput = tf.reshape(features, [1, dim[0], dim[1], 1])
+    input_layer = tf.reshape(features, [-1, dim[0], dim[1] , 1])
+    rawInput = tf.reshape(features, [-1, dim[0], dim[1], 1])
 
     ref_img = tf.placeholder('half', [dim[0], dim[1]], name='result')
-    y_ = tf.reshape(ref_img, [1, dim[0], dim[1] , 1])
+    y_ = tf.reshape(ref_img, [-1, dim[0], dim[1] , 1])
 
     w = dict()
     b = dict()
 
     for i, layer in enumerate(NNlayer[:nLayer]):
-        nFilter = int(layer.num_w_fltr[1])
         nChannel = int(layer.num_w_fltr[0])
+        nFilter = int(layer.num_w_fltr[1])
         nBias = int(layer.num_b_fltr[0])
 
         w[i] = weight_variable([3, 3, nChannel, nFilter])
@@ -186,10 +203,10 @@ def trainModel(NNlayer, img_data, img_shape):
 
     result = conv + rawInput
 
-    cross_entropy = -tf.reduce_sum(y_ * tf.log(result))
-    train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
-    correct_prediction = tf.equal(tf.argmax(result, 1), tf.argmax(y_, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+    mse = -tf.reduce_sum(tf.square(tf.sub(y_- result)))
+    train_step = tf.train.AdamOptimizer(1e-4).minimize(mse)
+    #correct_prediction = tf.equal(tf.argmax(result, 1), tf.argmax(y_, 1))
+    accuracy= 10.*math.log10(255*255/mse)
 
     sess=tf.Session()
     sess.run(tf.global_variables_initializer())
@@ -198,10 +215,10 @@ def trainModel(NNlayer, img_data, img_shape):
         batch = img_data.train.next_batch(50)
         if i % 100 == 0:
             train_accuracy = sess.run(accuracy, feed_dict={features: batch[0], ref_img: batch[1]})
-            print("step %d, training accuracy %g" % (i, train_accuracy))
-        sess.run(train_step, feed_dict={x: batch[0], y_: batch[1] })
+            print("step %d, training PSNR%g" % (i, train_accuracy))
+        sess.run(train_step, feed_dict={x: batch[0], ref_img: batch[1] })
 
-    res = sess.run(accuracy, feed_dict={x: img_data.test.images, y_: img_data.test.labels})
+    res = sess.run(accuracy, feed_dict={x: img_data.test.images, ref_img: img_data.test.labels})
 
 
     return res
@@ -214,7 +231,7 @@ def showResult(resImg):
 
 
 def calcPSNR(img1, img2):
-    import math
+
     mse= np.sum((img1.astype('float') - img2.astype('float'))**2)
     mse /= float(img1.shape[0] * img1.shape[1])
 
@@ -253,14 +270,18 @@ def test_main():
 
 
 def train_main():
+    import h5py
+    train_h5 = h5py.File("train.h5", "r")
+    test_h5  = h5py.File("test.h5", "r")
 
     #Data preparation
-    iData = None
-    nnLayer = None
-    imgShape = None
+    iData = imgData(test_h5, train_h5)
+    imgShape = (41,41)
+    nnLayer = setCNNParameter()
 
     result = trainModel(iData, nnLayer, imgShape)
-    print("test accuracy %g"%result)
+
+    print("test accuracy in PSRN %g"%result)
 
 if __name__ == '__main__':
     test_main();
