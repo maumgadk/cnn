@@ -5,6 +5,9 @@ from PIL import Image
 
 
 class nn:
+    """
+    
+    """
     def __init__(self,num_w_fltr, num_b_fltr, weight, bias):
         self.num_w_fltr = num_w_fltr
         self.num_b_fltr = num_b_fltr
@@ -19,7 +22,8 @@ class nn_img:
         self.batch_idx = 0
 
     def next_batch(self, batch_size):
-        return self.images[self.batch_idx: self.batch_idx + batch_size ]
+        self.batch_idx = self.batch_idx + batch_size
+        return self.images[self.batch_idx - batch_size : self.batch_idx ]
 
 class imgData:
     def __init__(self):
@@ -76,7 +80,7 @@ def getYCbCr(fn):
 
 def getBlur(img):
     dim = img.shape
-    half_dim = dim[0]/2, dim[1]/2
+    half_dim = dim[0]//2, dim[1]//2
     im = Image.fromarray(img, mode='L')
     im = im.resize(half_dim, Image.BICUBIC)
     im = im.resize(dim, Image.BICUBIC)
@@ -147,7 +151,6 @@ def bias_variable(shape):
 
 def trainModel(NNlayer, img_data, img_shape):
     """
-
     :param NNlayer: data structure for convolutional neural network
     :param img_data: image structure for training and test
     :param img_shape: dimension of image (height, width)
@@ -243,8 +246,8 @@ def test_main():
     colorImg[:,:,1]=Cb
     colorImg[:,:,2]=Cr
 
-    print 'PSNR of NN: ', calcPSNR(Y, resImg), 'dB'
-    print 'PSNR of Bicubic', calcPSNR(Y, im*255), 'dB'
+    print( 'PSNR of NN: ', calcPSNR(Y, resImg), 'dB')
+    print( 'PSNR of Bicubic', calcPSNR(Y, im*255), 'dB')
 
     showResult(colorImg)
 
@@ -259,4 +262,5 @@ def train_main():
     result = trainModel(iData, nnLayer, imgShape)
     print("test accuracy %g"%result)
 
-
+if __name__ == '__main__':
+    test_main();
