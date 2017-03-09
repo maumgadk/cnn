@@ -3,33 +3,53 @@ import math
 import tensorflow as tf
 import numpy as np
 from PIL import Image
+import h5py
+#import pickle
 
 
 class cnn:
     """
     CNN layer parameter 
-    
     """
+
     def __init__(self,num_w_fltr, num_b_fltr, weight, bias):
-        self.num_w_fltr = num_w_fltr
-        self.num_b_fltr = num_b_fltr
+        self.num_w_fltr = num_w_fltr # (channel, filter)
+        self.num_b_fltr = num_b_fltr # (filter, 1)
         self.weight = weight
         self.bias = bias
 
-
 class nn_img:
+    """
+    Images for training or testing
+    images: imasges for neural network input
+    labels: images for reference
+    """
+
     def __init__(self, images, labels):
+        self._size = len(images)
         self.images = images
         self.labels = labels
         self.batch_idx = 0
 
-    def next_batch(self, batch_size):
-        prev_idx = self.batch_idx
-        self.batch_idx = max(len(self.images), self.batch_idx + batch_size)
+    def reset_batch_index(self):
+        self.batch_idx =0
 
-        return (self.images[prev_idx : self.batch_idx ], self.labels[prev_idx : self.batch_idx ])
+    def next_batch(self, batch_size):
+        """
+        function for mini batch training
+        """
+        prev_idx = self.batch_idx
+        self.batch_idx = min(self._size, self.batch_idx + batch_size)
+
+        return (self.images[prev_idx : self.batch_idx ], 
+                self.labels[prev_idx : self.batch_idx ])
+
 
 class imgData:
+    """
+    Image Data set 
+
+    """
     def __init__(self, test_h5, train_h5):
         self.test = nn_img(test_h5['data'], test_h5['label'])
         self.train = nn_img(train_h5['data'], train_h5['label'])
@@ -40,7 +60,7 @@ def setCNNParameter():
     for i in range(num_layer):
         if i ==0:
             layer = cnn((1,64),(64,1), None, None)
-        elif i==20:
+        elif i== (num_layer -1):
             #(c,f,b,1)
             layer = cnn((64,1),(1,1), None, None)
         else:
@@ -116,8 +136,9 @@ def normalize(fn):
 
 
 def testModel(NNlayer, imY, nLayer=20):
+
     dim=imY.shape
-    features = tf.placeholder('float', [None, dim[0]*dim[1]], name='Input')
+    features = tf.placeholder('float', [None, dim[0], dim[1]], name='Input')
     input_layer = tf.reshape(features, [-1, dim[0], dim[1] , 1])
     rawInput = tf.reshape(features, [-1, dim[0], dim[1], 1])
 
@@ -131,6 +152,7 @@ def testModel(NNlayer, imY, nLayer=20):
 
         w[i] = tf.placeholder('float', [3, 3, nChannel, nFilter])
         b[i] = tf.placeholder('float', [nBias])
+
 
         x = tf.nn.conv2d(input_layer, filter=w[i], strides=[1, 1, 1, 1], padding='SAME', name="Conv" + str(i))
         conv = tf.nn.bias_add(x, b[i])
@@ -151,7 +173,7 @@ def testModel(NNlayer, imY, nLayer=20):
     tf.global_variables_initializer()
 
     fd = {}
-    fd[features] = imY
+    fd[features] = [imY]
     for i in range(len(NNlayer[:nLayer])):
         fd[w[i]] = weight[i]
         fd[b[i]] = bias[i]
@@ -169,7 +191,7 @@ def bias_variable(shape):
   return tf.Variable(initial)
 
 
-def trainModel(NNlayer, img_data, img_shape):
+def trainModel(NNlayer, img_data, img_shape, isTest=False):
     """
     :param NNlayer: data structure for convolutional neural network
     :param img_data: image structure for training and test
@@ -191,45 +213,62 @@ def trainModel(NNlayer, img_data, img_shape):
     w = dict()
     b = dict()
 
+
     for i, layer in enumerate(NNlayer[:nLayer]):
         nChannel = int(layer.num_w_fltr[0])
         nFilter = int(layer.num_w_fltr[1])
         nBias = int(layer.num_b_fltr[0])
-
+    
         w[i] = weight_variable([3, 3, nChannel, nFilter])
         b[i] = bias_variable([nBias])
-
-        x = tf.nn.conv2d(input_layer, filter=w[i], strides=[1, 1, 1, 1], padding='SAME', name="Conv" + str(i))
+    
+        x = tf.nn.conv2d(input_layer, filter=w[i], 
+                strides=[1, 1, 1, 1], padding='SAME', name="Conv" + str(i))
         conv = tf.nn.bias_add(x, b[i])
-
+    
         if i < (len(NNlayer) - 1):
             conv = tf.nn.relu(conv)
         input_layer = conv
-
+    
     result = conv + rawInput
 
-    mse = -tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
-    train_step = tf.train.AdamOptimizer(1e-4).minimize(mse)
+    SSE = tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
+    train_step = tf.train.AdamOptimizer(1e-3).minimize(SSE)
     #correct_prediction = tf.equal(tf.argmax(result, 1), tf.argmax(y_, 1))
-    #accuracy = tf.multiply(10., tf.log(tf.div(255.*255.,mse),tf.log(10.)))
-    mse_res = -tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
-
+    #accuracy = tf.multiply(10., tf.log(tf.div(255.*255.,SSE),tf.log(10.)))
+    SSE_res = tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
 
     sess=tf.Session()
     sess.run(tf.global_variables_initializer())
 
-    for i in range(len(img_data.train.images)):
-        batch = img_data.train.next_batch(100)
-        if i % 100 == 0:
-            train_accuracy = sess.run(mse_res, feed_dict={features: batch[0], ref_img: batch[1]})
-            print("step %d, training PSNR%g" % (i, train_accuracy))
-        sess.run(train_step, feed_dict={features: batch[0], ref_img: batch[1] })
+    saver = tr.train.Saver()
 
-    res = sess.run(mse_res, feed_dict={x: img_data.test.images, ref_img: img_data.test.labels})
+    nEpoch = 20
+    batch_size = 50
+    training_data_size = len(img_data.train.images)
+    #training_data_size = 10
 
+    for niter in range(nEpoch):
+        img_data.train.reset_batch_index();
+
+        for i in range(training_data_size//batch_size):
+            batch = img_data.train.next_batch(batch_size)
+            if i % batch_size == 0:
+                train_accuracy = sess.run(SSE_res, 
+                    feed_dict={features: batch[0], ref_img: batch[1]})
+                print("step %d, training SSE: %g" % (i, train_accuracy))
+            sess.run(train_step, feed_dict={features: batch[0], ref_img: batch[1] })
+    
+        res = sess.run(SSE_res, 
+            feed_dict={features: img_data.test.images[:100], 
+                                ref_img: img_data.test.labels[:100]})
+    
+        print("Epoch %d, Test SSE: %g" % (niter, res))
+        
+    
+    save_path = saver.save(sess, 'model.ckpt'); 
 
     return res
-
 
 def showResult(resImg):
     img = resImg.astype('uint8')
@@ -277,7 +316,6 @@ def test_main():
 
 
 def train_main():
-    import h5py
     train_h5 = h5py.File("train.h5", "r")
     test_h5  = h5py.File("test.h5", "r")
 
@@ -287,9 +325,11 @@ def train_main():
     imgShape = (41,41)
     nnLayer = setCNNParameter()
 
-    result = trainModel(nnLayer, iData, imgShape)
+    sse = trainModel(nnLayer, iData, imgShape)
+    sse = sse/(imgShape[0]*imgShape[1])
 
-    print("test accuracy in PSRN %g"%result)
+    psnr = 10.*math.log10(255*255/sse)
+    print("test accuracy in PSNR %g"%psnr)
 
 if __name__ == '__main__':
     import sys
