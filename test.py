@@ -247,13 +247,13 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     if isTest:
         saver.restore(sess, './model.ckpt')
         res = sess.run(result,
-                       feed_dict={features: img_data.test.images[:100]})
+                       feed_dict={features: img_data.test.images[:1], ref_img: img_data.test.images[:1] })
         return res
 
-    nEpoch = 1
-    batch_size =  5
+    nEpoch = 20
+    batch_size =  30
     training_data_size = len(img_data.train.images)
-    training_data_size = 10
+    #training_data_size = 30
 
     for niter in range(nEpoch):
         img_data.train.reset_batch_index()
@@ -328,10 +328,21 @@ def test_main():
 
 def train_main(isTest=''):
 
-    if isTest == 't2':
-        isTest = True
-    else:
-        isTest = False
+    nnLayer = setCNNParameter()
+
+    if isTest != '':
+
+
+        img_fn = 'baby_GT.bmp'
+        im = normalize(img_fn)
+
+        pseudoH5 = dict() 
+        pseudoH5['data'] = im
+        pseudoH5['label'] = im
+
+        iData = imgData(pseudoH5, pseudoH5)
+        
+        return trainModel(nnLayer, iData, imgShape, isTest=True)
 
     train_h5 = h5py.File("train.h5", "r")
     test_h5  = h5py.File("test.h5", "r")
@@ -339,13 +350,14 @@ def train_main(isTest=''):
     #Data preparation
     iData = imgData(test_h5, train_h5)
     imgShape = (41,41)
-    nnLayer = setCNNParameter()
-
+        
     sse = trainModel(nnLayer, iData, imgShape, isTest)
     sse = sse/(imgShape[0]*imgShape[1])
 
     psnr = 10.*math.log10(255*255/sse)
-    print("test accuracy in PSNR %g"%psnr)
+    print("test accuracy in SSE%g"%psnr)
+
+
 
 if __name__ == '__main__':
     import sys
@@ -357,7 +369,7 @@ if __name__ == '__main__':
 
     
     if sys.argv[1] == 'test':
-        test_main()
+        test_main(sys.argv[2])
         
     elif sys.argv[1] == 'train':
         train_main()
@@ -368,14 +380,14 @@ if __name__ == '__main__':
         resImg = result[0, :, :, 0]*255
         resImg = np.clip(resImg,0,255)
 
-        Y, Cb, Cr = getYCbCr(img_fn)
-        colorImg = np.ndarray((Y.shape[0], Y.shape[1], 3),dtype="uint8")
+        #Y, Cb, Cr = getYCbCr(img_fn)
+        colorImg = np.ndarray((resImg.shape[0], resImg.shape[1], 3),dtype="uint8")
         colorImg[:,:,0]=resImg
-        colorImg[:,:,1]=Cb
-        colorImg[:,:,2]=Cr
+        colorImg[:,:,1]= 0
+        colorImg[:,:,2]= 0
 
-        print( 'PSNR of NN: ', calcPSNR(Y, resImg), 'dB')
-        print( 'PSNR of Bicubic', calcPSNR(Y, im*255), 'dB')
+        #print( 'PSNR of NN: ', calcPSNR(Y, resImg), 'dB')
+        #print( 'PSNR of Bicubic', calcPSNR(Y, im*255), 'dB')
 
         showResult(colorImg)
 
