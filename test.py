@@ -238,21 +238,30 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     #accuracy = tf.multiply(10., tf.log(tf.div(255.*255.,SSE),tf.log(10.)))
     SSE_res = tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
 
+    saver = tf.train.Saver()
+
     sess=tf.Session()
     sess.run(tf.global_variables_initializer())
 
-    saver = tr.train.Saver()
 
-    nEpoch = 20
-    batch_size = 50
+    if isTest:
+        saver.restore(sess, './model.ckpt')
+        res = sess.run(result,
+                       feed_dict={features: img_data.test.images[:100]})
+        return res
+
+    nEpoch = 1
+    batch_size =  5
     training_data_size = len(img_data.train.images)
-    #training_data_size = 10
+    training_data_size = 10
 
     for niter in range(nEpoch):
-        img_data.train.reset_batch_index();
+        img_data.train.reset_batch_index()
 
         for i in range(training_data_size//batch_size):
+
             batch = img_data.train.next_batch(batch_size)
+
             if i % batch_size == 0:
                 train_accuracy = sess.run(SSE_res, 
                     feed_dict={features: batch[0], ref_img: batch[1]})
@@ -266,9 +275,11 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
         print("Epoch %d, Test SSE: %g" % (niter, res))
         
     
-    save_path = saver.save(sess, 'model.ckpt'); 
+    save_path = saver.save(sess, './model.ckpt')
+    #print("Model Save Path:%g"% save_path)
 
     return res
+
 
 def showResult(resImg):
     img = resImg.astype('uint8')
@@ -315,17 +326,22 @@ def test_main():
     showResult(colorImg)
 
 
-def train_main():
+def train_main(isTest=''):
+
+    if isTest == 't2':
+        isTest = True
+    else:
+        isTest = False
+
     train_h5 = h5py.File("train.h5", "r")
     test_h5  = h5py.File("test.h5", "r")
 
     #Data preparation
-    ##iData = imgData(test_h5, train_h5)
-    iData = imgData(test_h5, test_h5)
+    iData = imgData(test_h5, train_h5)
     imgShape = (41,41)
     nnLayer = setCNNParameter()
 
-    sse = trainModel(nnLayer, iData, imgShape)
+    sse = trainModel(nnLayer, iData, imgShape, isTest)
     sse = sse/(imgShape[0]*imgShape[1])
 
     psnr = 10.*math.log10(255*255/sse)
@@ -345,6 +361,24 @@ if __name__ == '__main__':
         
     elif sys.argv[1] == 'train':
         train_main()
+
+    elif sys.argv[1] == 't2':
+        result = train_main('t2')
+
+        resImg = result[0, :, :, 0]*255
+        resImg = np.clip(resImg,0,255)
+
+        Y, Cb, Cr = getYCbCr(img_fn)
+        colorImg = np.ndarray((Y.shape[0], Y.shape[1], 3),dtype="uint8")
+        colorImg[:,:,0]=resImg
+        colorImg[:,:,1]=Cb
+        colorImg[:,:,2]=Cr
+
+        print( 'PSNR of NN: ', calcPSNR(Y, resImg), 'dB')
+        print( 'PSNR of Bicubic', calcPSNR(Y, im*255), 'dB')
+
+        showResult(colorImg)
+
 
     else:
         print('Wrong parameter')
