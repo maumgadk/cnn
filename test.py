@@ -30,8 +30,8 @@ class nn_img:
         self.labels = labels
         self.batch_idx = 0
 
-    def reset_batch_index(self):
-        self.batch_idx =0
+    def reset_batch_index(self, rd_idx=0):
+        self.batch_idx = rd_idx
 
     def next_batch(self, batch_size):
         """
@@ -271,7 +271,19 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     """
 
     saver = tf.train.Saver()
-    saver.restore(sess, './model.ckpt')
+    try:
+        saver.restore(sess, './model.ckpt')
+
+    except:
+        pass
+
+    try:
+        f = open('iter.txt', 'r')
+        rd_idx=f.readline()
+        f.close()
+    except IOError:
+        rd_idx = 0
+
     if isTest:
         res = sess.run(result,
                        feed_dict={features: [img_data.test.images[0:1]], ref_img: [img_data.test.images[0:1]] })
@@ -285,7 +297,7 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     ##step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
 
     for niter in range(nEpoch):
-        img_data.train.reset_batch_index()
+        img_data.train.reset_batch_index(int(rd_idx))
 
         for i in range(training_data_size//batch_size):
 
@@ -309,6 +321,11 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     save_path = saver.save(sess, './model.ckpt')
     #print("Model Save Path:%g"% save_path)
 
+    rd_idx = img_data.train.batch_idx
+    f = open('iter.txt', 'w')
+    f.write(str(rd_idx))
+    f.close()
+
     return res
 
 
@@ -331,7 +348,7 @@ def calcPSNR(img1, img2):
     mse= np.sum((img1.astype('float') - img2.astype('float'))**2)
     mse /= float(img1.shape[0] * img1.shape[1])
 
-    return 10.*math.log10(255.255/mse)
+    return 10.*math.log10(255.*255./mse)
 
 
 
@@ -360,7 +377,7 @@ def test_main():
     colorImg[:,:,1]=Cb
     colorImg[:,:,2]=Cr
 
-    print( 'PSNR of NN: ', calcPSNR(Y, resImg), 'dB')
+    print( 'PSNR of NN: ',    calcPSNR(Y, resImg), 'dB')
     print( 'PSNR of Bicubic', calcPSNR(Y, im*255), 'dB')
 
     showResult(colorImg)
@@ -423,7 +440,7 @@ if __name__ == '__main__':
         Y, Cb, Cr = getYCbCr(img_fn)
         blurImg = getBlur(Y)
 
-        result = train_main(blurImg)
+        result = train_main(blurImg/255.)
 
         #print result.shape
 
@@ -432,12 +449,12 @@ if __name__ == '__main__':
 
         #Y, Cb, Cr = getYCbCr(img_fn)
         colorImg = np.ndarray((resImg.shape[0], resImg.shape[1], 3),dtype="uint8")
-        colorImg[:,:,0]=resImg
+        colorImg[:,:,0]= resImg
         colorImg[:,:,1]= Cb
         colorImg[:,:,2]= Cr
 
-        print( 'PSNR of NN: ', calcPSNR(Y, resImg), 'dB')
-        print( 'PSNR of Bicubic', calcPSNR(Y, blurImg*255), 'dB')
+        print( 'PSNR of NN: ',      calcPSNR(Y, resImg), 'dB')
+        print( 'PSNR of Bicubic: ', calcPSNR(Y, blurImg), 'dB')
 
         showResult(colorImg)
 
