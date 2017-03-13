@@ -37,6 +37,8 @@ class nn_img:
         """
         function for mini batch training
         """
+        if self.batch_idx == self._size:
+            self.batch_idx = 0
         prev_idx = self.batch_idx
         self.batch_idx = min(self._size, self.batch_idx + batch_size)
 
@@ -197,7 +199,6 @@ def weight_variable(shape):
 
 def bias_variable(shape):
     """ Initialize neural network bias (Tensorflow variable) """
-
     initial = tf.constant(0.1, shape=shape)
     return tf.Variable(initial)
 
@@ -212,8 +213,6 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     """
     nLayer = len(NNlayer) #number of layer
 
-    # training image의 해상도가 모두 다른데 어떻게?
-    # 3가지의 scale에 대해 training하는 것 같은데 2,3,4
     dim=img_shape
     _size = dim[0]*dim[1]
     features = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='TrInput')
@@ -245,14 +244,14 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     
     result = conv + rawInput
 
-    SSE = tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
-    train_step = tf.train.AdamOptimizer(1e-3).minimize(SSE)
-    #correct_prediction = tf.equal(tf.argmax(result, 1), tf.argmax(y_, 1))
-    #accuracy = tf.multiply(10., tf.log(tf.div(255.*255.,SSE),tf.log(10.)))
-    SSE_res = tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
+    for gpu_id in range(1):
+        with tf.device('/gpu:'+str(gpu_id)):
+            #SSE = tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
+            SSE_res = tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
 
+    train_step = tf.train.AdamOptimizer(1e-3).minimize(SSE_res)
 
-    sess=tf.Session()
+    sess=tf.Session(config=tf.ConfigProto(log_device_placement=True))
     sess.run(tf.global_variables_initializer())
 
     #tf.add_to_collection('features', features)
@@ -268,6 +267,7 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
 
     if new_saver is not None:
         new_saver.restore(sess, tf.train.latest_checkpoint('./'))
+
     """
 
     saver = tf.train.Saver()
@@ -277,56 +277,79 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     except:
         pass
 
+
+
+    if isTest:
+        return sess.run(result, feed_dict={features: [img_data.test.images[0:1]], 
+                                   ref_img: [img_data.test.images[0:1]] })
+
+    nEpoch = 10 
+    batch_size = 50
+    training_data_size = len(img_data.train.images)
+    #training_data_size = 1000 
+    ##step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
+    PSNR = 0.
+
     try:
         f = open('iter.txt', 'r')
-        rd_idx=f.readline()
+        rd_idx = f.readline()
         f.close()
+
+        rd_idx = int(rd_idx)
+        if rd_idx >= training_data_size: 
+            rd_idx = 0
     except IOError:
         rd_idx = 0
 
-    if isTest:
-        res = sess.run(result,
-                       feed_dict={features: [img_data.test.images[0:1]], ref_img: [img_data.test.images[0:1]] })
-        return res
-
-
-    nEpoch = 2
-    batch_size = 5
-    #training_data_size = len(img_data.train.images)
-    training_data_size = 20
-    ##step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
+    logFile = open('psnr_log.txt', 'a')
+    f = open('iter.txt', 'w')
 
     for niter in range(nEpoch):
-        img_data.train.reset_batch_index(int(rd_idx))
+        if niter >0: 
+            rd_idx = 0
+        img_data.train.reset_batch_index(rd_idx)
 
-        for i in range(training_data_size//batch_size):
-
+        #for i in range(training_data_size//batch_size):
+        while( img_data.train.batch_idx <= training_data_size):
             batch = img_data.train.next_batch(batch_size)
 
             if i % batch_size == 0:
-                sse = sess.run(SSE_res,
-                    feed_dict={features: batch[0], ref_img: batch[1]})
+                sse = sess.run(SSE_res, feed_dict={features: batch[0], ref_img: batch[1]})
                 PSNR = psnr(sse/_size)
-                print("step %d, training PSNR: %g" % (i, PSNR))
+                logLn = "step %d, training PSNR: %g" % (i, PSNR)
+                print(logLn)
+                logFile.write(logLn+'\n')
+                logFile.flush()
+                save_path = saver.save(sess, './model.ckpt')
+                rd_idx = img_data.train.batch_idx
+                f.write(str(rd_idx))
+                f.flush()
+
             sess.run(train_step, feed_dict={features: batch[0], ref_img: batch[1] })
 
         res = sess.run(SSE_res, 
             feed_dict={features: img_data.test.images[:100], 
-                                ref_img: img_data.test.labels[:100]})
+                        ref_img: img_data.test.labels[:100]})
         PSNR = psnr(res/_size)
     
-        print("Epoch %d, Test PSNR: %g" % (niter, PSNR))
-        
+        logLn = "Epoch %d, Test PSNR: %g" % (niter, PSNR)
+        print(logLn)
+        logFile.write(logLn+'\n') 
+        rd_idx =0 
+        f.write(str(rd_idx))
+        f.close()
+        save_path = saver.save(sess, './model.ckpt')
     
-    save_path = saver.save(sess, './model.ckpt')
     #print("Model Save Path:%g"% save_path)
 
     rd_idx = img_data.train.batch_idx
-    f = open('iter.txt', 'w')
+    f.write(str(rd_idx))
+    rd_idx =0
     f.write(str(rd_idx))
     f.close()
+    logFile.close()
 
-    return res
+    return PSNR
 
 
 def showResult(resImg):
@@ -406,11 +429,9 @@ def train_main( im=None ):
     iData = imgData(test_h5, train_h5)
     imgShape = (41,41)
         
-    sse = trainModel(nnLayer, iData, imgShape, isTest=(im is not None))
-    sse = sse/(imgShape[0]*imgShape[1])
+    psnr = trainModel(nnLayer, iData, imgShape, isTest=False)
 
-    psnr = 10.*math.log10(255*255/sse)
-    print("Test PSNR %g"%psnr)
+    #print("Test PSNR %g"%psnr)
 
 
 
