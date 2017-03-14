@@ -227,10 +227,10 @@ def restoreModel(session):
 
 def initTraining(img_data):
     """Initialize  """
-    nEpoch = 10 
-    batch_size = 50
-    training_data_size = len(img_data.train.images)
-    #training_data_size = 3000 
+    nEpoch = 1 
+    batch_size = 10 
+    #training_data_size = len(img_data.train.images)
+    training_data_size = 20
     ##step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
 
     try:
@@ -248,30 +248,25 @@ def initTraining(img_data):
 
     print ('rd_idx: %d'%rd_idx)
 
+    logFile = open('psnr_log.txt', 'a')
+    f = open('iter.txt', 'w')
 
-    return nEpoch, batch_size, training_data_size, rd_idx
+    return nEpoch, batch_size, training_data_size, rd_idx, logFile, f
 
-def trainModel(NNlayer, img_data, img_shape, isTest=False):
-    """
-    :param NNlayer: data structure for convolutional neural network
-    :param img_data: image structure for training and test
-    :param img_shape: dimension of image (height, width)
-    :param isTest: if True: train, else reconstruct img_data
-    :return: if isTest: reconstructed image, else PSNR of training result
-    """
-    nLayer = len(NNlayer) #number of layer
+def genW_B(NNlayer, img_shape ):
 
-    dim=img_shape
-    _size = dim[0]*dim[1]
+    dim = img_shape
     features = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='TrInput')
-    input_layer = tf.reshape(features, [ -1, dim[0], dim[1] , 1])
-    rawInput = tf.reshape(features, [ -1, dim[0], dim[1], 1])
+    #input_layer = tf.reshape(features, [ -1, dim[0], dim[1] , 1])
+    #rawInput = tf.reshape(features, [ -1, dim[0], dim[1], 1])
 
     ref_img = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='result')
-    y_ = tf.reshape(ref_img, [ -1, dim[0], dim[1] , 1])
+    #y_ = tf.reshape(ref_img, [ -1, dim[0], dim[1] , 1])
 
     w = dict()
     b = dict()
+
+    nLayer = len(NNlayer) #number of layer
 
     for i, layer in enumerate(NNlayer[:nLayer]):
         nChannel = int(layer.num_w_fltr[0])
@@ -281,100 +276,138 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
         w[i] = weight_variable([3, 3, nChannel, nFilter])
         b[i] = bias_variable([nBias])
         
+    return features, ref_img, w, b
+
+
+def Model(NNlayer, img_shape, features, ref_img, w, b ):
+    """ VDSR CNN model """
+    
+    nLayer = len(NNlayer) #number of layer
+
+    dim=img_shape
+
+    #features = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='TrInput')
+    input_layer = tf.reshape(features, [ -1, dim[0], dim[1] , 1])
+    rawInput = tf.reshape(features, [ -1, dim[0], dim[1], 1])
+
+    #ref_img = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='result')
+    y_ = tf.reshape(ref_img, [ -1, dim[0], dim[1] , 1])
+
+
+    for i, layer in enumerate(NNlayer[:nLayer]):
+
         x = tf.nn.conv2d(input_layer, filter=w[i], 
-            strides=[1, 1, 1, 1], padding='SAME', name="Conv" + str(i))
+             strides=[1, 1, 1, 1], padding='SAME', name="Conv" + str(i))
         conv = tf.nn.bias_add(x, b[i])
-        
+         
         if i < (len(NNlayer) - 1):
             conv = tf.nn.relu(conv)
         input_layer = conv
-    
+     
     result = conv + rawInput
-
 
     SSE_res = tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
 
+    return result, SSE_res 
 
-    global_step = tf.Variable(0, trainable=False)
-    starter_learning_rate = 0.1
-    learning_rate = tf.train.exponential_decay(starter_learning_rate, 
-            global_step, 100000, 0.96, staircase=True)
-    train_step = tf.train.AdamOptimizer(learning_rate).minimize(SSE_res) #1e-3
 
-    #train_step = tf.train.AdamOptimizer(1e-2).minimize(SSE_res) #1e-3
+def report_psnr(sse, img_shape, logFile, f, niter, rd_idx, isEndEpoch=False ):
 
-    #sess=tf.Session(config=tf.ConfigProto(log_device_placement=True))
+    _size = img_shape[0]*img_shape[1]
+
+    PSNR = psnr(sse/_size) 
+
+    logLn = None
+    if isEndEpoch:
+        logLn = "Epoch %d, Test PSNR: %g" % (niter, PSNR)
+    else:
+        logLn = "step %d, training PSNR: %g" % (niter, PSNR) 
+
+    logFile.write(logLn+'\n'); logFile.flush() 
+    print(logLn) 
+    
+    f.write(str(rd_idx)+'\n') 
+    f.flush() 
+
+    return PSNR
+    
+
+def trainModel(NNlayer, img_data, img_shape, isTest=False):
+    """
+    :param NNlayer: data structure for convolutional neural network
+    :param img_data: image structure for training and test
+    :param img_shape: dimension of image (height, width)
+    :param isTest: if True: train, else reconstruct img_data
+    :return: if isTest: reconstructed image, else PSNR of training result
+    """
+    features, ref_img, w, b = genW_B(NNlayer, img_shape)
+
+    result, SSE_res = Model(NNlayer, img_shape, features, ref_img, w, b)
+
+    
+    #global_step = tf.Variable(0, trainable=False)
+    #starter_learning_rate = 0.1
+    #learning_rate = tf.train.exponential_decay(starter_learning_rate, 
+    #                    global_step, 100000, 0.96, staircase=True)
+   
+    #train_step = tf.train.AdamOptimizer(learning_rate).minimize(SSE_res) #1e-3
+    train_step = tf.train.AdamOptimizer(0.01).minimize(SSE_res) #1e-3
+    
     sess=tf.Session()
     sess.run(tf.global_variables_initializer())
 
-    #tf.add_to_collection('features', features)
-    #tf.add_to_collection('ref_img', ref_img)
-    #tf.add_to_collection('result', result)
-
     #Load variables saved
-
     saver = restoreModel(sess)
 
     if isTest:
         return sess.run(result, feed_dict={features: [img_data.test.images[0:1]], 
                                    ref_img: [img_data.test.images[0:1]] })
 
-    nEpoch, batch_size, training_data_size, rd_idx = initTraining(img_data)
+    nEpoch, batch_size, training_data_size, rd_idx, logFile, f = initTraining(img_data)
+
     PSNR = 0.
 
-    logFile = open('psnr_log.txt', 'a')
-    f = open('iter.txt', 'w')
-
     start_time = datetime.datetime.now()
+
     for niter in range(nEpoch):
         if niter >0: rd_idx = 0
 
         img_data.train.reset_batch_index(rd_idx)
 
-        #for i in range(training_data_size//batch_size):
         i=0
         while( img_data.train.batch_idx <= training_data_size):
+
             batch = img_data.train.next_batch(batch_size)
 
             if i % batch_size == 0:
+                
                 sse = sess.run(SSE_res, feed_dict={features: batch[0], ref_img: batch[1]})
-                PSNR = psnr(sse/_size)
-                logLn = "step %d, training PSNR: %g" % (i, PSNR)
-                print(logLn)
-                logFile.write(logLn+'\n')
-                logFile.flush()
-                save_path = saver.save(sess, './model.ckpt')
-                rd_idx = img_data.train.batch_idx
-                f.write(str(rd_idx)+'\n')
-                f.flush()
 
+                rd_idx = img_data.train.batch_idx 
+                report_psnr(sse, img_shape, logFile, f, i, rd_idx)
+
+            save_path = saver.save(sess, './model.ckpt')
 
             sess.run(train_step, feed_dict={features: batch[0], ref_img: batch[1] })
+
             i += 1
 
         res = sess.run(SSE_res, feed_dict={features: img_data.test.images[:100], 
                         ref_img: img_data.test.labels[:100]})
 
-        PSNR = psnr(res/_size)
-    
-        logLn = "Epoch %d, Test PSNR: %g" % (niter, PSNR)
-        print(logLn)
-        logFile.write(logLn+'\n') 
-        logFile.flush()
-        rd_idx =0 
-        f.write(str(rd_idx))
-        f.flush()
+        PSNR = report_psnr(res, img_shape, logFile, f, niter, rd_idx, isEndEpoch=True)
 
         save_path = saver.save(sess, './model.ckpt')
     
     rd_idx =0
+
     f.write(str(rd_idx))
     f.close()
     logFile.close()
 
     end_time =  datetime.datetime.now()
-    spend_time = end_time - start_time
-    print('Processing time: %s'%str(spend_time))
+    spent_time = end_time - start_time
+    print('Processing time: %s'%str(spent_time))
 
     return PSNR
 
