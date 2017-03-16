@@ -151,8 +151,8 @@ def toColorImage(Y, Cb, Cr):
     """ Y, Cb, Cr: numpy arrary 
         colorImg: 8 bits color numpy array """
 
-    colorImg = np.ndarray((resImg.shape[0], resImg.shape[1], 3),dtype="uint8")
-    colorImg[:,:,0]= resImg
+    colorImg = np.ndarray((Y.shape[0], Y.shape[1], 3),dtype="uint8")
+    colorImg[:,:,0]= Y
     colorImg[:,:,1]= Cb
     colorImg[:,:,2]= Cr
 
