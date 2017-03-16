@@ -301,16 +301,15 @@ def Model(NNlayer, img_shape, features, ref_img, w, b ):
      
     result = conv + rawInput
 
-    SSE_res = tf.reduce_sum(tf.square(tf.subtract( y_,  result)))
+    SSE_res = tf.reduce_mean(tf.square(tf.subtract( y_,  result)))
 
     return result, SSE_res 
 
 
-def report_psnr(sse, img_shape, logFile, iterFile, niter, rd_idx, isEndEpoch=False ):
+def report_psnr(mse, logFile, iterFile, niter, rd_idx, isEndEpoch=False ):
     """ Print and log psnr per each training step or epoch """
 
-    _size = img_shape[0]*img_shape[1]
-    PSNR = psnr(sse/_size) 
+    PSNR = psnr(mse) 
 
     logLn = None
     if isEndEpoch:
@@ -383,7 +382,7 @@ def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
         train_step= opt.apply_gradients(av_grad)
 
         #SSE_res = tf.add_n(SSE_ress)
-        SSE_res = tf.reduce_sum(SSE_ress)
+        SSE_res = tf.reduce_mean(SSE_ress)
 
         #global_step = tf.Variable(0, trainable=False)
         #starter_learning_rate = 0.1
@@ -420,17 +419,17 @@ def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
                 batch = img_data.train.next_batch(batch_size)
 
                 if i % batch_size == 0:
-                    sse = sess.run(SSE_res, feed_dict={features: batch[0], ref_img: batch[1]})
+                    mse = sess.run(SSE_res, feed_dict={features: batch[0], ref_img: batch[1]})
                     rd_idx = img_data.train.batch_idx 
-                    report_psnr(sse, img_shape, logFile, iterFile, i, rd_idx)
+                    report_psnr(mse, logFile, iterFile, i, rd_idx)
 
                 save_path = saver.save(sess, './model.ckpt')
                 sess.run(train_step, feed_dict={features: batch[0], ref_img: batch[1] })
                 i += 1
 
-            res = sess.run(SSE_res, feed_dict={features: img_data.test.images[:100], 
+            mse = sess.run(SSE_res, feed_dict={features: img_data.test.images[:100], 
                             ref_img: img_data.test.labels[:100]})
-            PSNR = report_psnr(res, img_shape, logFile, iterFile, niter, rd_idx, isEndEpoch=True)
+            PSNR = report_psnr(mse, logFile, iterFile, niter, rd_idx, isEndEpoch=True)
             save_path = saver.save(sess, './model.ckpt')
         
         rd_idx =0
