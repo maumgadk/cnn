@@ -61,7 +61,7 @@ class imgData:
 def setCNNParameter():
     """ Set channel number and filter number of each cnn layer for training"""
 
-    num_layer =  4
+    num_layer =  3
     NNlayer = []
     for i in range(num_layer):
         if i ==0:
@@ -139,7 +139,7 @@ def getBlur(img):
 
 
 def blurAndNormalize(fn):
-    """ blur and then normalize Y pixel value by 255"""
+    """ blur and then normalize Y(0~255) pixel value 0~1 """
 
     Y, Cb, Cr = getYCbCr(fn)
     blurImg = getBlur(Y)
@@ -147,20 +147,33 @@ def blurAndNormalize(fn):
     return blurImg/255.
 
 
-def testModel(NNlayer, imY, nLayer=20):
+def toColorImage(Y, Cb, Cr):
+    """ Y, Cb, Cr: numpy arrary 
+        colorImg: 8 bits color numpy array """
+
+    colorImg = np.ndarray((resImg.shape[0], resImg.shape[1], 3),dtype="uint8")
+    colorImg[:,:,0]= resImg
+    colorImg[:,:,1]= Cb
+    colorImg[:,:,2]= Cr
+
+    return colorImg
+
+
+def testModel(NNlayer, imY):
     """ 
     function to test VDSR nn using pre-trained model parameter in model.txt which is obtained from VDSR github
     """
 
-    dim=imY.shape
-    features = tf.placeholder('float', [None, dim[0], dim[1]], name='Input')
-    input_layer = tf.reshape(features, [-1, dim[0], dim[1] , 1])
-    rawInput = tf.reshape(features, [-1, dim[0], dim[1], 1])
+    nLayer = len(NNlayer)
+
+    features = tf.placeholder('float', [None, imY.shape[0], imY.shape[1]], name='Input')
+    input_layer = tf.reshape(features, [-1, imY.shape[0], imY.shape[1] , 1])
+    rawInput = tf.reshape(features, [-1, imY.shape[0], imY.shape[1], 1])
 
     w = dict()
     b = dict()
 
-    for i, layer in enumerate(NNlayer[:nLayer]):
+    for i, layer in enumerate(NNlayer):
         nFilter = int(layer.num_w_fltr[1])
         nChannel = int(layer.num_w_fltr[0])
         nBias = int(layer.num_b_fltr[0])
@@ -171,7 +184,7 @@ def testModel(NNlayer, imY, nLayer=20):
         x = tf.nn.conv2d(input_layer, filter=w[i], strides=[1, 1, 1, 1], padding='SAME', name="Conv" + str(i))
         conv = tf.nn.bias_add(x, b[i])
 
-        if i < (len(NNlayer) - 1):
+        if i < (nLayer - 1):
             conv = tf.nn.relu(conv)
         input_layer = conv
 
@@ -179,7 +192,7 @@ def testModel(NNlayer, imY, nLayer=20):
 
     weight ={}
     bias = {}
-    for i, layer in enumerate(NNlayer[:nLayer]):
+    for i, layer in enumerate(NNlayer):
         weight[i] = layer.weight.reshape(3,3,int(layer.num_w_fltr[0]), int(layer.num_w_fltr[1]))
         bias[i] = layer.bias.reshape(int(layer.num_b_fltr[0]))
 
@@ -188,9 +201,10 @@ def testModel(NNlayer, imY, nLayer=20):
 
     fd = {}
     fd[features] = [imY]
-    for i in range(len(NNlayer[:nLayer])):
+    for i in range(nLayer):
         fd[w[i]] = weight[i]
         fd[b[i]] = bias[i]
+
     res = sess.run(result,feed_dict=fd)
 
     return res
@@ -232,6 +246,7 @@ def restoreModel(session):
 
 def initTraining(img_data):
     """Initialize  """
+
     nEpoch = 5
     batch_size = 200 
     training_data_size = len(img_data.train.images)
@@ -479,7 +494,7 @@ def test_main():
     img_fn = 'baby_GT.bmp'
     im = blurAndNormalize(img_fn)
 
-    result = testModel(NN, im, numLayer)
+    result = testModel(NN, im)
 
     resImg = result[0, :, :, 0]*255
     resImg = np.clip(resImg,0,255)
@@ -522,6 +537,7 @@ def train_main(gpu_list, im=None ):
     #print("Test PSNR %g"%psnr)
 
 
+
 def inference(gpu_list):
     """ Prediction """
 
@@ -534,16 +550,16 @@ def inference(gpu_list):
     resImg = result[0, :, :, 0]*255
     resImg = np.clip(resImg,0,255)
 
-    colorImg = np.ndarray((resImg.shape[0], resImg.shape[1], 3),dtype="uint8")
-    colorImg[:,:,0]= resImg
-    colorImg[:,:,1]= Cb
-    colorImg[:,:,2]= Cr
 
     print( 'PSNR of NN: ',      calcPSNR(Y, resImg), 'dB')
     print( 'PSNR of Bicubic: ', calcPSNR(Y, blurImg), 'dB')
 
-    showResult(colorImg)
+    rec_colorImg = toColorImage(resImg, Cb, Cr)
+    showResult(rec_colorImg)
 
+    bicubic_colorImg = toColorImage(blurImg, Cb, Cr)
+    showResult(bicubic_colorImg)
+    
 
 if __name__ == '__main__':
 
