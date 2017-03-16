@@ -233,7 +233,7 @@ def restoreModel(session):
 def initTraining(img_data):
     """Initialize  """
     nEpoch = 5
-    batch_size = 2000 
+    batch_size = 200 
     training_data_size = len(img_data.train.images)
     #training_data_size = 2000 
     ##Number of step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
@@ -351,7 +351,7 @@ def average_gradients(tower_grads):
     average_grads.append(grad_and_var)
   return average_grads   
 
-def trainModel(NNlayer, img_data, img_shape, isTest=False):
+def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
     """
     :param NNlayer: data structure for convolutional neural network
     :param img_data: image structure for training and test
@@ -361,7 +361,8 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     """
 
     with tf.device('/cpu:0'): 
-        num_gpu = 4
+
+        num_gpu = len(gpu_list) 
 
         features, ref_img, w, b = genW_B(NNlayer, img_shape)
         opt = tf.train.AdamOptimizer(0.01) 
@@ -371,8 +372,8 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
 
         SSE_ress= []
         grads = []
-        for i in range(num_gpu):
-            with tf.device('/gpu:'+str(i)):
+        for i, gpu in enumerate(gpu_list):
+            with tf.device(gpu):
                 result, SSE= Model(NNlayer, img_shape, features_lst[i], ref_img_lst[i], w, b)
                 SSE_ress.append(SSE)
                 grad = opt.compute_gradients(SSE)
@@ -496,7 +497,7 @@ def test_main():
     showResult(colorImg)
 
 
-def train_main( im=None ):
+def train_main(gpu_list, im=None ):
 
     nnLayer = setCNNParameter()
 
@@ -508,7 +509,7 @@ def train_main( im=None ):
         iData = imgData(pseudoH5, pseudoH5)
         imgShape = im.shape
         
-        return trainModel(nnLayer, iData, imgShape, isTest=True)
+        return trainModel(nnLayer, iData, imgShape, gpu_list, isTest=True)
 
     train_h5 = h5py.File("train.h5", "r")
     test_h5  = h5py.File("test.h5", "r")
@@ -517,19 +518,19 @@ def train_main( im=None ):
     iData = imgData(test_h5, train_h5)
     imgShape = (41,41)
         
-    psnr = trainModel(nnLayer, iData, imgShape, isTest=False)
+    psnr = trainModel(nnLayer, iData, imgShape, gpu_list, isTest=False)
 
     #print("Test PSNR %g"%psnr)
 
 
-def inference():
+def inference(gpu_list):
     """ Prediction """
 
     img_fn = sys.argv[2]
     Y, Cb, Cr = getYCbCr(img_fn)
     blurImg = getBlur(Y)
 
-    result = train_main(blurImg/255.)
+    result = train_main(gpu_list, blurImg/255.)
 
     resImg = result[0, :, :, 0]*255
     resImg = np.clip(resImg,0,255)
@@ -551,21 +552,27 @@ if __name__ == '__main__':
         print('Wrong parameter')
         print('Ex) For test, Type python test.py test')
         print('Ex) For test, Type python test.py t2 image.bmp')
-        print('Ex) For train, Type python test.py test')
+        print('Ex) For train, Type python test.py train [gpu num_gpu]\n, default is cpu')
     
     if sys.argv[1] == 'test':
         test_main()
         
     elif sys.argv[1] == 'train':
-        train_main()
+        if len(sys.argv) == 4:
+            num_gpu = int(sys.argv[3])
+            gpu_list = [('gpu:'+str(i)) for i in range(num_gpu)]
+        else:
+            gpu_list = ['/cpu:0']
+
+        train_main(gpu_list)
 
     elif sys.argv[1] == 't2':
         if len(sys.argv) <3:
             print('Wrong parameter')
             print('Ex) For test, Type python test.py t2 image_file_name')
             sys.exit()
-
-        inference()
+        
+        inference(['cpu:0'])
 
     else:
         print('Wrong parameter')
