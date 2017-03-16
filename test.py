@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 import h5py
 import datetime
+import sys
 
 class cnn:
     """
@@ -25,12 +26,14 @@ class nn_img:
     """
 
     def __init__(self, images, labels):
+        """ """
         self._size = len(images)
         self.images = images
         self.labels = labels
         self.batch_idx = 0
 
     def reset_batch_index(self, rd_idx=0):
+        """  """
         self.batch_idx = rd_idx
 
     def next_batch(self, batch_size):
@@ -58,7 +61,7 @@ class imgData:
 def setCNNParameter():
     """ Set channel number and filter number of each cnn layer for training"""
 
-    num_layer = 20
+    num_layer =  4
     NNlayer = []
     for i in range(num_layer):
         if i ==0:
@@ -79,16 +82,19 @@ def genCNNParameter(dat):
     NNlayer = []
     for i in range(len(dat)):
         dat2 = dat[i].split(', ')
-        npdat2 = np.array(dat2[:-1], np.float16)
+        
+        #remove line feed ('\n') and convert data to numpy array
+        npdat2 = np.array(dat2[:-1], np.float16) 
 
         #fn1: number of channel
         #fn2: number of filter
-        #
-        head = 4
+        #fw, fh: filter width, height
+        head = 4 #Maigic number
         fw, fh, fn1, fn2 = npdat2[:head].astype("int32")
-
+        
+        # Last line that contains number of bias filter of last layer
         if i == (len(dat) - 1):
-            head = 3
+            head = 3 #magic number
             fw, fh, fn1 = npdat2[:head].astype("int32")
             fn2 = 1
 
@@ -101,8 +107,8 @@ def genCNNParameter(dat):
         weight = np.swapaxes(weight, 0,3)
         weight = np.swapaxes(weight, 1,2)
 
+        #Set up network parameter for specific cnn layer
         layer = cnn((fn1, fn2), (bias1, bias2), weight, bias)
-
         NNlayer.append(layer)
 
     return NNlayer
@@ -114,10 +120,9 @@ def getYCbCr(fn):
     im = Image.open(fn)
     im = im.convert('YCbCr')
     imYCbCr= np.array(im)
-    imY= imYCbCr[:, :, 0]  # to make a separate copy as array is immutable
-    imCb= imYCbCr[:, :, 1]  # to make a separate copy as array is immutable
-    imCr= imYCbCr[:, :, 2]  # to make a separate copy as array is immutable
-
+    imY = imYCbCr[:, :, 0]
+    imCb= imYCbCr[:, :, 1] 
+    imCr= imYCbCr[:, :, 2] 
 
     return imY, imCb, imCr
 
@@ -125,11 +130,10 @@ def getYCbCr(fn):
 def getBlur(img):
     """ return blured image using bicubic operation"""
 
-    dim = img.shape
-    half_dim = dim[0]//2, dim[1]//2
+    half_dim = img.shape[0]//2, img.shape[1]//2
     im = Image.fromarray(img, mode='L')
     im = im.resize(half_dim, Image.BICUBIC)
-    im = im.resize(dim, Image.BICUBIC)
+    im = im.resize(img.shape, Image.BICUBIC)
 
     return np.array(im)
 
@@ -144,7 +148,8 @@ def blurAndNormalize(fn):
 
 
 def testModel(NNlayer, imY, nLayer=20):
-    """ function to test VDSR nn using pre-trained model parameter in model.txt which is obtained from VDSR github
+    """ 
+    function to test VDSR nn using pre-trained model parameter in model.txt which is obtained from VDSR github
     """
 
     dim=imY.shape
@@ -162,7 +167,6 @@ def testModel(NNlayer, imY, nLayer=20):
 
         w[i] = tf.placeholder('float', [3, 3, nChannel, nFilter])
         b[i] = tf.placeholder('float', [nBias])
-
 
         x = tf.nn.conv2d(input_layer, filter=w[i], strides=[1, 1, 1, 1], padding='SAME', name="Conv" + str(i))
         conv = tf.nn.bias_add(x, b[i])
@@ -188,6 +192,7 @@ def testModel(NNlayer, imY, nLayer=20):
         fd[w[i]] = weight[i]
         fd[b[i]] = bias[i]
     res = sess.run(result,feed_dict=fd)
+
     return res
 
 
@@ -227,16 +232,16 @@ def restoreModel(session):
 
 def initTraining(img_data):
     """Initialize  """
-    nEpoch = 1 
-    batch_size = 10 
-    #training_data_size = len(img_data.train.images)
-    training_data_size = 20
-    ##step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
+    nEpoch = 5
+    batch_size = 2000 
+    training_data_size = len(img_data.train.images)
+    #training_data_size = 2000 
+    ##Number of step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
 
     try:
-        f = open('iter.txt', 'r')
-        rd_idxs = f.readlines()
-        f.close()
+        iterFile = open('iter.txt', 'r')
+        rd_idxs = iterFile.readlines()
+        iterFile .close()
 
         if len(rd_idxs) == 0: rd_idx = 0
         else: rd_idx = int(rd_idxs[-1])
@@ -248,20 +253,16 @@ def initTraining(img_data):
 
     print ('rd_idx: %d'%rd_idx)
 
-    logFile = open('psnr_log.txt', 'a')
-    f = open('iter.txt', 'w')
+    logFile = open('psnr.log', 'a')
+    iterFile  = open('iter.txt', 'w')
 
-    return nEpoch, batch_size, training_data_size, rd_idx, logFile, f
+    return nEpoch, batch_size, training_data_size, rd_idx, logFile, iterFile 
+
 
 def genW_B(NNlayer, img_shape ):
-
-    dim = img_shape
-    features = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='TrInput')
-    #input_layer = tf.reshape(features, [ -1, dim[0], dim[1] , 1])
-    #rawInput = tf.reshape(features, [ -1, dim[0], dim[1], 1])
-
-    ref_img = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='result')
-    #y_ = tf.reshape(ref_img, [ -1, dim[0], dim[1] , 1])
+    """ Initialize tensor Variables"""
+    features = tf.placeholder('float', [None, 1, img_shape[0], img_shape[1]], name='TrInput')
+    ref_img = tf.placeholder('float', [None, 1, img_shape[0], img_shape[1]], name='result')
 
     w = dict()
     b = dict()
@@ -284,23 +285,17 @@ def Model(NNlayer, img_shape, features, ref_img, w, b ):
     
     nLayer = len(NNlayer) #number of layer
 
-    dim=img_shape
+    input_layer = tf.reshape(features, [ -1, img_shape[0], img_shape[1] , 1])
+    rawInput = tf.reshape(features, [ -1, img_shape[0], img_shape[1], 1])
+    y_ = tf.reshape(ref_img, [ -1, img_shape[0], img_shape[1] , 1])
 
-    #features = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='TrInput')
-    input_layer = tf.reshape(features, [ -1, dim[0], dim[1] , 1])
-    rawInput = tf.reshape(features, [ -1, dim[0], dim[1], 1])
-
-    #ref_img = tf.placeholder('float', [None, 1, dim[0], dim[1]], name='result')
-    y_ = tf.reshape(ref_img, [ -1, dim[0], dim[1] , 1])
-
-
-    for i, layer in enumerate(NNlayer[:nLayer]):
+    for i, layer in enumerate(NNlayer):
 
         x = tf.nn.conv2d(input_layer, filter=w[i], 
              strides=[1, 1, 1, 1], padding='SAME', name="Conv" + str(i))
         conv = tf.nn.bias_add(x, b[i])
          
-        if i < (len(NNlayer) - 1):
+        if i < (nLayer - 1):
             conv = tf.nn.relu(conv)
         input_layer = conv
      
@@ -311,10 +306,10 @@ def Model(NNlayer, img_shape, features, ref_img, w, b ):
     return result, SSE_res 
 
 
-def report_psnr(sse, img_shape, logFile, f, niter, rd_idx, isEndEpoch=False ):
+def report_psnr(sse, img_shape, logFile, iterFile, niter, rd_idx, isEndEpoch=False ):
+    """ Print and log psnr per each training step or epoch """
 
     _size = img_shape[0]*img_shape[1]
-
     PSNR = psnr(sse/_size) 
 
     logLn = None
@@ -326,11 +321,35 @@ def report_psnr(sse, img_shape, logFile, f, niter, rd_idx, isEndEpoch=False ):
     logFile.write(logLn+'\n'); logFile.flush() 
     print(logLn) 
     
-    f.write(str(rd_idx)+'\n') 
-    f.flush() 
+    iterFile.write(str(rd_idx)+'\n') 
+    iterFile.flush() 
 
     return PSNR
-    
+
+def average_gradients(tower_grads):
+  average_grads = []
+  for grad_and_vars in zip(*tower_grads):
+    # Note that each grad_and_vars looks like the following:
+    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+    grads = []
+    for g, _ in grad_and_vars:
+      # Add 0 dimension to the gradients to represent the tower.
+      expanded_g = tf.expand_dims(g, 0)
+
+      # Append on a 'tower' dimension which we will average over below.
+      grads.append(expanded_g)
+
+    # Average over the 'tower' dimension.
+    grad = tf.concat(axis=0, values=grads)
+    grad = tf.reduce_mean(grad, 0)
+
+    # Keep in mind that the Variables are redundant because they are shared
+    # across towers. So .. we will just return the first tower's pointer to
+    # the Variable.
+    v = grad_and_vars[0][1]
+    grad_and_var = (grad, v)
+    average_grads.append(grad_and_var)
+  return average_grads   
 
 def trainModel(NNlayer, img_data, img_shape, isTest=False):
     """
@@ -340,74 +359,87 @@ def trainModel(NNlayer, img_data, img_shape, isTest=False):
     :param isTest: if True: train, else reconstruct img_data
     :return: if isTest: reconstructed image, else PSNR of training result
     """
-    features, ref_img, w, b = genW_B(NNlayer, img_shape)
 
-    result, SSE_res = Model(NNlayer, img_shape, features, ref_img, w, b)
+    with tf.device('/cpu:0'): 
+        num_gpu = 4
 
-    
-    #global_step = tf.Variable(0, trainable=False)
-    #starter_learning_rate = 0.1
-    #learning_rate = tf.train.exponential_decay(starter_learning_rate, 
-    #                    global_step, 100000, 0.96, staircase=True)
+        features, ref_img, w, b = genW_B(NNlayer, img_shape)
+        opt = tf.train.AdamOptimizer(0.01) 
+
+        features_lst= tf.split(features, num_gpu)
+        ref_img_lst= tf.split(ref_img, num_gpu)
+
+        SSE_ress= []
+        grads = []
+        for i in range(num_gpu):
+            with tf.device('/gpu:'+str(i)):
+                result, SSE= Model(NNlayer, img_shape, features_lst[i], ref_img_lst[i], w, b)
+                SSE_ress.append(SSE)
+                grad = opt.compute_gradients(SSE)
+                grads.append(grad)
+
+        av_grad=average_gradients(grads) 
+        train_step= opt.apply_gradients(av_grad)
+
+        #SSE_res = tf.add_n(SSE_ress)
+        SSE_res = tf.reduce_sum(SSE_ress)
+
+        #global_step = tf.Variable(0, trainable=False)
+        #starter_learning_rate = 0.1
+        #learning_rate = tf.train.exponential_decay(starter_learning_rate, 
+        #                    global_step, 100000, 0.96, staircase=True)
    
-    #train_step = tf.train.AdamOptimizer(learning_rate).minimize(SSE_res) #1e-3
-    train_step = tf.train.AdamOptimizer(0.01).minimize(SSE_res) #1e-3
-    
-    sess=tf.Session()
-    sess.run(tf.global_variables_initializer())
+        #train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(SSE_res, global_step=global_step) #1e-3
 
-    #Load variables saved
-    saver = restoreModel(sess)
+        #train_step = tf.train.AdamOptimizer(0.01).minimize(SSE_res) #1e-3
+        
+        sess=tf.Session()
+        sess.run(tf.global_variables_initializer())
 
-    if isTest:
-        return sess.run(result, feed_dict={features: [img_data.test.images[0:1]], 
-                                   ref_img: [img_data.test.images[0:1]] })
+        #Load variables saved
+        saver = restoreModel(sess)
 
-    nEpoch, batch_size, training_data_size, rd_idx, logFile, f = initTraining(img_data)
+        if isTest:
+            return sess.run(result, feed_dict={features: [img_data.test.images[0:1]], 
+                                       ref_img: [img_data.test.images[0:1]] })
 
-    PSNR = 0.
+        nEpoch, batch_size, training_data_size, rd_idx, logFile, iterFile = initTraining(img_data)
+        PSNR = 0.
 
-    start_time = datetime.datetime.now()
+        start_time = datetime.datetime.now()
 
-    for niter in range(nEpoch):
-        if niter >0: rd_idx = 0
+        for niter in range(nEpoch):
+            if niter >0: rd_idx = 0
 
-        img_data.train.reset_batch_index(rd_idx)
+            img_data.train.reset_batch_index(rd_idx)
 
-        i=0
-        while( img_data.train.batch_idx <= training_data_size):
+            i=0
+            while( img_data.train.batch_idx <= training_data_size):
 
-            batch = img_data.train.next_batch(batch_size)
+                batch = img_data.train.next_batch(batch_size)
 
-            if i % batch_size == 0:
-                
-                sse = sess.run(SSE_res, feed_dict={features: batch[0], ref_img: batch[1]})
+                if i % batch_size == 0:
+                    sse = sess.run(SSE_res, feed_dict={features: batch[0], ref_img: batch[1]})
+                    rd_idx = img_data.train.batch_idx 
+                    report_psnr(sse, img_shape, logFile, iterFile, i, rd_idx)
 
-                rd_idx = img_data.train.batch_idx 
-                report_psnr(sse, img_shape, logFile, f, i, rd_idx)
+                save_path = saver.save(sess, './model.ckpt')
+                sess.run(train_step, feed_dict={features: batch[0], ref_img: batch[1] })
+                i += 1
 
+            res = sess.run(SSE_res, feed_dict={features: img_data.test.images[:100], 
+                            ref_img: img_data.test.labels[:100]})
+            PSNR = report_psnr(res, img_shape, logFile, iterFile, niter, rd_idx, isEndEpoch=True)
             save_path = saver.save(sess, './model.ckpt')
+        
+        rd_idx =0
+        iterFile.write(str(rd_idx))
+        iterFile.close()
+        logFile.close()
 
-            sess.run(train_step, feed_dict={features: batch[0], ref_img: batch[1] })
-
-            i += 1
-
-        res = sess.run(SSE_res, feed_dict={features: img_data.test.images[:100], 
-                        ref_img: img_data.test.labels[:100]})
-
-        PSNR = report_psnr(res, img_shape, logFile, f, niter, rd_idx, isEndEpoch=True)
-
-        save_path = saver.save(sess, './model.ckpt')
-    
-    rd_idx =0
-
-    f.write(str(rd_idx))
-    f.close()
-    logFile.close()
-
-    end_time =  datetime.datetime.now()
-    spent_time = end_time - start_time
-    print('Processing time: %s'%str(spent_time))
+        end_time =  datetime.datetime.now()
+        spent_time = end_time - start_time
+        print('Processing time: %s'%str(spent_time))
 
     return PSNR
 
@@ -420,9 +452,8 @@ def showResult(resImg):
 
 
 def psnr(mse):
-    """
-    input: mean square error
-    return: PSNR """
+    """ input: mean square error return: PSNR """
+    #if mse == 0.0 return np.nan
     return 10.*math.log10(1./mse)
 
 
@@ -436,15 +467,14 @@ def calcPSNR(img1, img2):
 
 
 def test_main():
-    """ """
-
-    numLayer = 20
+    """ Show the result of VDSR paper """
 
     fn = 'model.txt'
     f = open(fn, 'r')
     dat = f.readlines()
 
     NN= genCNNParameter(dat)
+    numLayer = len(NN) 
 
     img_fn = 'baby_GT.bmp'
     im = blurAndNormalize(img_fn)
@@ -471,11 +501,9 @@ def train_main( im=None ):
     nnLayer = setCNNParameter()
 
     if im is not None:
-
         pseudoH5 = dict() 
         pseudoH5['data'] = [im]
         pseudoH5['label'] = [im]
-
 
         iData = imgData(pseudoH5, pseudoH5)
         imgShape = im.shape
@@ -494,15 +522,36 @@ def train_main( im=None ):
     #print("Test PSNR %g"%psnr)
 
 
+def inference():
+    """ Prediction """
+
+    img_fn = sys.argv[2]
+    Y, Cb, Cr = getYCbCr(img_fn)
+    blurImg = getBlur(Y)
+
+    result = train_main(blurImg/255.)
+
+    resImg = result[0, :, :, 0]*255
+    resImg = np.clip(resImg,0,255)
+
+    colorImg = np.ndarray((resImg.shape[0], resImg.shape[1], 3),dtype="uint8")
+    colorImg[:,:,0]= resImg
+    colorImg[:,:,1]= Cb
+    colorImg[:,:,2]= Cr
+
+    print( 'PSNR of NN: ',      calcPSNR(Y, resImg), 'dB')
+    print( 'PSNR of Bicubic: ', calcPSNR(Y, blurImg), 'dB')
+
+    showResult(colorImg)
+
+
 if __name__ == '__main__':
-    import sys
 
     if len(sys.argv) <2:
         print('Wrong parameter')
         print('Ex) For test, Type python test.py test')
         print('Ex) For test, Type python test.py t2 image.bmp')
         print('Ex) For train, Type python test.py test')
-
     
     if sys.argv[1] == 'test':
         test_main()
@@ -513,33 +562,14 @@ if __name__ == '__main__':
     elif sys.argv[1] == 't2':
         if len(sys.argv) <3:
             print('Wrong parameter')
-            print('Ex) For test, Type python test.py test')
+            print('Ex) For test, Type python test.py t2 image_file_name')
+            sys.exit()
 
-        #img_fn = 'baby_GT.bmp'
-        img_fn = sys.argv[2]
-        Y, Cb, Cr = getYCbCr(img_fn)
-        blurImg = getBlur(Y)
-
-        result = train_main(blurImg/255.)
-
-        #print result.shape
-
-        resImg = result[0, :, :, 0]*255
-        resImg = np.clip(resImg,0,255)
-
-        #Y, Cb, Cr = getYCbCr(img_fn)
-        colorImg = np.ndarray((resImg.shape[0], resImg.shape[1], 3),dtype="uint8")
-        colorImg[:,:,0]= resImg
-        colorImg[:,:,1]= Cb
-        colorImg[:,:,2]= Cr
-
-        print( 'PSNR of NN: ',      calcPSNR(Y, resImg), 'dB')
-        print( 'PSNR of Bicubic: ', calcPSNR(Y, blurImg), 'dB')
-
-        showResult(colorImg)
-
+        inference()
 
     else:
         print('Wrong parameter')
         print('Ex) For test,\n Type python test.py test') 
         print('Ex) For train,\n Type python test.py test') 
+        
+
