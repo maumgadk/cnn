@@ -8,15 +8,14 @@ import datetime
 import sys
 
 class cnn:
-    """
-    CNN layer parameter 
-    """
+    """ CNN layer parameter """
 
     def __init__(self,num_w_fltr, num_b_fltr, weight, bias):
         self.num_w_fltr = num_w_fltr # (channel, filter)
         self.num_b_fltr = num_b_fltr # (filter, 1)
         self.weight = weight
         self.bias = bias
+
 
 class nn_img:
     """
@@ -172,7 +171,8 @@ def toColorImage(Y, Cb, Cr):
 
 def testModel(NNlayer, imY):
     """ 
-    function to test VDSR nn using pre-trained model parameter in model.txt which is obtained from VDSR github
+    function to test VDSR nn using pre-trained model parameter in model.txt 
+    which is obtained from VDSR github
     """
 
     nLayer = len(NNlayer)
@@ -258,7 +258,7 @@ def restoreModel(session):
 def initTraining(img_data):
     """Initialize training parameters """
 
-    nEpoch = 5
+    nEpoch = 1
     batch_size = 100 
     training_data_size = len(img_data.train.images)
     #training_data_size = 200 
@@ -354,7 +354,10 @@ def report_psnr(mse, logFile, iterFile, niter, rd_idx, isEndEpoch=False ):
 
     return PSNR
 
+
 def average_gradients(tower_grads):
+    """Averaging gradient """
+
   average_grads = []
   for grad_and_vars in zip(*tower_grads):
     # Note that each grad_and_vars looks like the following:
@@ -378,6 +381,7 @@ def average_gradients(tower_grads):
     grad_and_var = (grad, v)
     average_grads.append(grad_and_var)
   return average_grads   
+
 
 def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
     """
