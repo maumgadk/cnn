@@ -460,6 +460,7 @@ def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
         PSNR = 0.
 
         start_time = datetime.datetime.now()
+        print('Start time: %s'%str(start_time))
 
         for niter in range(nEpoch):
             if niter >0: rd_idx = 0
