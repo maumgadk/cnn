@@ -49,7 +49,11 @@ class nn_img:
         if self.batch_idx == self._size:
             self.batch_idx = 0
         prev_idx = self.batch_idx
-        self.batch_idx = min(self._size, self.batch_idx + batch_size)
+        #self.batch_idx = min(self._size, self.batch_idx + batch_size)
+        self.batch_idx += batch_size 
+        if self.batch_idx > self._size:
+            prev_idx =0
+            self.batch_idx = batch_size
 
         return (self.images[prev_idx : self.batch_idx ], 
                 self.labels[prev_idx : self.batch_idx ])
@@ -220,6 +224,18 @@ def testModel(NNlayer, imY):
 
     return res
 
+def xavier_init(n_inputs, n_outputs, uniform=True):
+
+    if uniform:
+        # 6 was used in the paper.
+        init_range = tf.sqrt(6.0 / (n_inputs + n_outputs))
+        return tf.random_uniform_initializer(-init_range, init_range)
+    else:
+        # 3 gives us approximately the same limits as above since this repicks
+        # values greater than 2 standard deviations from the mean.
+        stddev = tf.sqrt(3.0 / (n_inputs + n_outputs))
+        return tf.truncated_normal_initializer(stddev=stddev)
+
 
 def weight_variable(shape):
     """ Initialize neural network weights(Tensorflow variable) """
@@ -260,8 +276,8 @@ def initTraining(img_data):
 
     nEpoch = 1
     batch_size = 100 
-    training_data_size = len(img_data.train.images)
-    #training_data_size = 200 
+    #training_data_size = len(img_data.train.images)
+    training_data_size = 300000 
     ##Number of step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
 
     try:
@@ -289,7 +305,9 @@ def initTraining(img_data):
 
 
 def genW_B(NNlayer, img_shape ):
-    """ Initialize tensor Variables"""
+    """ Initialize cnn weight and bias tensor Variables.
+        These variables are shared among the GPUs. 
+    """
     features = tf.placeholder('float', [None, 1, img_shape[0], img_shape[1]], name='TrInput')
     ref_img = tf.placeholder('float', [None, 1, img_shape[0], img_shape[1]], name='result')
 
@@ -358,29 +376,29 @@ def report_psnr(mse, logFile, iterFile, niter, rd_idx, isEndEpoch=False ):
 def average_gradients(tower_grads):
     """Averaging gradient """
 
-  average_grads = []
-  for grad_and_vars in zip(*tower_grads):
+    average_grads = []
+    for grad_and_vars in zip(*tower_grads):
     # Note that each grad_and_vars looks like the following:
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-    grads = []
-    for g, _ in grad_and_vars:
-      # Add 0 dimension to the gradients to represent the tower.
-      expanded_g = tf.expand_dims(g, 0)
+        grads = []
+        for g, _ in grad_and_vars:
+          # Add 0 dimension to the gradients to represent the tower.
+          expanded_g = tf.expand_dims(g, 0)
 
-      # Append on a 'tower' dimension which we will average over below.
-      grads.append(expanded_g)
+          # Append on a 'tower' dimension which we will average over below.
+          grads.append(expanded_g)
 
-    # Average over the 'tower' dimension.
-    grad = tf.concat(axis=0, values=grads)
-    grad = tf.reduce_mean(grad, 0)
+        # Average over the 'tower' dimension.
+        grad = tf.concat(axis=0, values=grads)
+        grad = tf.reduce_mean(grad, 0)
 
-    # Keep in mind that the Variables are redundant because they are shared
-    # across towers. So .. we will just return the first tower's pointer to
-    # the Variable.
-    v = grad_and_vars[0][1]
-    grad_and_var = (grad, v)
-    average_grads.append(grad_and_var)
-  return average_grads   
+        # Keep in mind that the Variables are redundant because they are shared
+        # across towers. So .. we will just return the first tower's pointer to
+        # the Variable.
+        v = grad_and_vars[0][1]
+        grad_and_var = (grad, v)
+        average_grads.append(grad_and_var)
+    return average_grads   
 
 
 def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
@@ -399,12 +417,13 @@ def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
         features, ref_img, w, b = genW_B(NNlayer, img_shape)
 
         global_step = tf.Variable(0, trainable=False)
-        #starter_learning_rate = 0.00001
+        #starter_learning_rate = 0.0001
         #learning_rate = tf.train.exponential_decay(starter_learning_rate, 
         #                    global_step, 1000, 0.96, staircase=True)
-   
-        opt = tf.train.AdamOptimizer(0.01) # Learning rate = 0.01
+        #learning_rate = 0.001
         #opt = tf.train.GradientDescentOptimizer(learning_rate)
+
+        opt = tf.train.AdamOptimizer(0.01) # Learning rate = 0.01
 
         features_lst= tf.split(features, num_gpu)
         ref_img_lst= tf.split(ref_img, num_gpu)
@@ -418,17 +437,12 @@ def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
                 grad = opt.compute_gradients(SSE)
                 grads.append(grad)
 
-        av_grad=average_gradients(grads) 
-        train_step= opt.apply_gradients(av_grad, global_step=global_step )
-        
-
         SSE_res = tf.reduce_mean(SSE_ress)
 
-        #global_step = tf.Variable(0, trainable=False)
-        #starter_learning_rate = 0.1
-        #learning_rate = tf.train.exponential_decay(starter_learning_rate, 
-        #                    global_step, 100000, 0.96, staircase=True)
-   
+        av_grad=average_gradients(grads) 
+        train_step= opt.apply_gradients(av_grad, global_step=global_step )
+
+
         #train_step = tf.train.GradientDescentOptimizer(learning_rate).minimize(SSE_res, global_step=global_step) #1e-3
 
         
@@ -456,7 +470,7 @@ def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
             while( img_data.train.batch_idx <= training_data_size):
                 batch = img_data.train.next_batch(batch_size)
 
-                if i % batch_size == 0:
+                if i % 50 == 0:
                     mse = sess.run(SSE_res, feed_dict={features: batch[0], ref_img: batch[1]})
                     rd_idx = img_data.train.batch_idx 
                     report_psnr(mse, logFile, iterFile, i, rd_idx)
@@ -482,11 +496,14 @@ def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
     return PSNR
 
 
-def showResult(resImg):
+def showResult(resImg, fn=None):
     """ Display YCbCr image whose type is numpy array """
     img = resImg.astype('uint8')
     img = Image.fromarray(img, mode='YCbCr')
     img.show("Result")
+    if fn is not None:
+        img = img.convert('RGB')
+        img.save(fn)
 
 
 def psnr(mse):
@@ -577,10 +594,10 @@ def inference(gpu_list):
     print( 'PSNR of Bicubic: ', calcPSNR(Y, blurImg), 'dB')
 
     rec_colorImg = toColorImage(resImg, Cb, Cr)
-    showResult(rec_colorImg)
+    showResult(rec_colorImg, 'result.bmp')
 
     bicubic_colorImg = toColorImage(blurImg, Cb, Cr)
-    showResult(bicubic_colorImg)
+    showResult(bicubic_colorImg, 'bicubic.bmp')
     
 
 if __name__ == '__main__':
@@ -597,7 +614,7 @@ if __name__ == '__main__':
     elif sys.argv[1] == 'train':
         if len(sys.argv) == 4:
             num_gpu = int(sys.argv[3])
-            gpu_list = [('gpu:'+str(i)) for i in range(num_gpu)]
+            gpu_list = [('/gpu:'+str(i)) for i in range(num_gpu)]
         else:
             gpu_list = ['/cpu:0']
 
