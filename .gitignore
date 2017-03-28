@@ -3,4 +3,5 @@
 model_layer*
 psnr.log
 iter.txt
+model.ckpt*
 
