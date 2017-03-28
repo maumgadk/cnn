@@ -242,12 +242,9 @@ def He_init(n_inputs, n_outputs, uniform=True):
     """ xavier with 2x stddev"""
 
     if uniform:
-        # 6 was used in the paper.
         init_range = tf.sqrt(4.0*6.0 / (n_inputs + n_outputs))
         return tf.random_uniform_initializer(-init_range, init_range)
     else:
-        # 3 gives us approximately the same limits as above since this repicks
-        # values greater than 2 standard deviations from the mean.
         stddev = tf.sqrt(4.0*3.0 / (n_inputs + n_outputs))
         return tf.truncated_normal_initializer(stddev=stddev)
 
@@ -275,15 +272,14 @@ def weight_variable(w_idx, shape):
     """ Initialize neural network weights(Tensorflow variable) """
     #initial = tf.truncated_normal(shape, stddev=0.1)
     #return tf.Variable(initial)
-    #return tf.get_variable('w'+str(w_idx), shape=shape, initializer=tf.contrib.layers.xavier_initializer())
-    return tf.get_variable('w'+str(w_idx), shape=shape, initializer=he_init(shape))
+    return tf.get_variable('w'+str(w_idx), shape=shape, initializer=tf.contrib.layers.xavier_initializer_conv2d())
+    #return tf.get_variable('w'+str(w_idx), shape=shape, initializer=he_init(shape))
 
 def bias_variable(b_idx, shape):
     """ Initialize neural network bias (Tensorflow variable) """
-    #initial = tf.constant(0.1, shape=shape)
-    #return tf.Variable(initial)
-    #return tf.get_variable('b'+ str(b_idx), shape=shape, initializer=tf.contrib.layers.xavier_initializer())
-    return tf.get_variable('b'+ str(b_idx), shape=shape, initializer=he_init(shape))
+    initial = tf.constant(0.1, shape=shape)
+    return tf.Variable(initial)
+    #return tf.get_variable('b'+ str(b_idx), shape=shape, initializer=he_init(shape))
 
 def restoreModel(session):
     """ restore Graph and model parameters"""
