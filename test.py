@@ -229,12 +229,12 @@ def Xavier_init(n_inputs, n_outputs, uniform=True):
 
     if uniform:
         # 6 was used in the paper.
-        init_range = tf.sqrt(6.0 / (n_inputs + n_outputs))
+        init_range = tf.sqrt(4.0*6.0 / (n_inputs + n_outputs))
         return tf.random_uniform_initializer(-init_range, init_range)
     else:
         # 3 gives us approximately the same limits as above since this repicks
         # values greater than 2 standard deviations from the mean.
-        stddev = tf.sqrt(3.0 / (n_inputs + n_outputs))
+        stddev = tf.sqrt(4.0*3.0 / (n_inputs + n_outputs))
         return tf.truncated_normal_initializer(stddev=stddev)
 
 
@@ -253,7 +253,7 @@ def He_init(n_inputs, n_outputs, uniform=True):
 
 def xaver_init(shape, uniform=True):
     n_inputs = 1
-    for i in shape[:-1]:
+    for i in shape:
         n_inputs *= i
 
     n_outputs = shape[-1]
@@ -263,7 +263,7 @@ def xaver_init(shape, uniform=True):
 
 def he_init(shape, uniform=True):
     n_inputs = 1
-    for i in shape[:-1]:
+    for i in shape:
         n_inputs *= i
 
     n_outputs = shape[-1]
@@ -275,14 +275,15 @@ def weight_variable(w_idx, shape):
     """ Initialize neural network weights(Tensorflow variable) """
     #initial = tf.truncated_normal(shape, stddev=0.1)
     #return tf.Variable(initial)
-    return tf.get_variable('w'+str(w_idx), shape=shape, initializer=tf.contrib.layers.xavier_initializer())
+    #return tf.get_variable('w'+str(w_idx), shape=shape, initializer=tf.contrib.layers.xavier_initializer())
+    return tf.get_variable('w'+str(w_idx), shape=shape, initializer=he_init(shape))
 
 def bias_variable(b_idx, shape):
     """ Initialize neural network bias (Tensorflow variable) """
     #initial = tf.constant(0.1, shape=shape)
     #return tf.Variable(initial)
-    return tf.get_variable('b'+ str(b_idx), shape=shape, initializer=tf.contrib.layers.xavier_initializer())
-
+    #return tf.get_variable('b'+ str(b_idx), shape=shape, initializer=tf.contrib.layers.xavier_initializer())
+    return tf.get_variable('b'+ str(b_idx), shape=shape, initializer=he_init(shape))
 
 def restoreModel(session):
     """ restore Graph and model parameters"""
@@ -312,7 +313,7 @@ def initTraining(img_data):
     nEpoch = 1
     batch_size = 100 
     #training_data_size = len(img_data.train.images)
-    training_data_size = 30000
+    training_data_size = 10000
     ##Number of step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
 
     try:
