@@ -224,7 +224,8 @@ def testModel(NNlayer, imY):
 
     return res
 
-def xavier_init(n_inputs, n_outputs, uniform=True):
+
+def Xavier_init(n_inputs, n_outputs, uniform=True):
 
     if uniform:
         # 6 was used in the paper.
@@ -249,6 +250,26 @@ def He_init(n_inputs, n_outputs, uniform=True):
         # values greater than 2 standard deviations from the mean.
         stddev = tf.sqrt(4.0*3.0 / (n_inputs + n_outputs))
         return tf.truncated_normal_initializer(stddev=stddev)
+
+def xaver_init(shape, uniform=True):
+    n_inputs = 1
+    for i in shape[:-1]:
+        n_inputs *= i
+
+    n_outputs = shape[-1]
+
+    return Xavier_init(n_inputs, n_outputs, uniform)
+
+
+def he_init(shape, uniform=True):
+    n_inputs = 1
+    for i in shape[:-1]:
+        n_inputs *= i
+
+    n_outputs = shape[-1]
+
+    return He_init(n_inputs, n_outputs, uniform)
+
 
 def weight_variable(w_idx, shape):
     """ Initialize neural network weights(Tensorflow variable) """
@@ -291,7 +312,7 @@ def initTraining(img_data):
     nEpoch = 1
     batch_size = 100 
     #training_data_size = len(img_data.train.images)
-    training_data_size = 300
+    training_data_size = 30000
     ##Number of step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
 
     try:
