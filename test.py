@@ -237,6 +237,19 @@ def xavier_init(n_inputs, n_outputs, uniform=True):
         return tf.truncated_normal_initializer(stddev=stddev)
 
 
+def He_init(n_inputs, n_outputs, uniform=True):
+    """ xavier with 2x stddev"""
+
+    if uniform:
+        # 6 was used in the paper.
+        init_range = tf.sqrt(4.0*6.0 / (n_inputs + n_outputs))
+        return tf.random_uniform_initializer(-init_range, init_range)
+    else:
+        # 3 gives us approximately the same limits as above since this repicks
+        # values greater than 2 standard deviations from the mean.
+        stddev = tf.sqrt(4.0*3.0 / (n_inputs + n_outputs))
+        return tf.truncated_normal_initializer(stddev=stddev)
+
 def weight_variable(shape):
     """ Initialize neural network weights(Tensorflow variable) """
     initial = tf.truncated_normal(shape, stddev=0.1)
