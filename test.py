@@ -29,11 +29,11 @@ class nn_img:
         self._size = len(images)
 
         #If you have not enough memory, you should not use the following 2 lines  
-        self.images = np.array(images)
-        self.labels = np.array(labels)
+        #self.images = np.array(images)
+        #self.labels = np.array(labels)
         #If you have not enough memory, you should enable the following 2 commented lines  
-        #self.images = images
-        #self.labels = labels
+        self.images = images
+        self.labels = labels
         self.batch_idx = 0
 
 
@@ -250,16 +250,17 @@ def He_init(n_inputs, n_outputs, uniform=True):
         stddev = tf.sqrt(4.0*3.0 / (n_inputs + n_outputs))
         return tf.truncated_normal_initializer(stddev=stddev)
 
-def weight_variable(shape):
+def weight_variable(w_idx, shape):
     """ Initialize neural network weights(Tensorflow variable) """
-    initial = tf.truncated_normal(shape, stddev=0.1)
-    return tf.Variable(initial)
+    #initial = tf.truncated_normal(shape, stddev=0.1)
+    #return tf.Variable(initial)
+    return tf.get_variable('w'+str(w_idx), shape=shape, initializer=tf.contrib.layers.xavier_initializer())
 
-
-def bias_variable(shape):
+def bias_variable(b_idx, shape):
     """ Initialize neural network bias (Tensorflow variable) """
-    initial = tf.constant(0.1, shape=shape)
-    return tf.Variable(initial)
+    #initial = tf.constant(0.1, shape=shape)
+    #return tf.Variable(initial)
+    return tf.get_variable('b'+ str(b_idx), shape=shape, initializer=tf.contrib.layers.xavier_initializer())
 
 
 def restoreModel(session):
@@ -290,7 +291,7 @@ def initTraining(img_data):
     nEpoch = 1
     batch_size = 100 
     #training_data_size = len(img_data.train.images)
-    training_data_size = 300000 
+    training_data_size = 300
     ##Number of step per Epoch = 24930, (batch_size = 50, training_data_size = len(img_data.train.images)
 
     try:
@@ -334,8 +335,8 @@ def genW_B(NNlayer, img_shape ):
         nFilter = int(layer.num_w_fltr[1])
         nBias = int(layer.num_b_fltr[0])
         
-        w[i] = weight_variable([3, 3, nChannel, nFilter])
-        b[i] = bias_variable([nBias])
+        w[i] = weight_variable(i, [3, 3, nChannel, nFilter])
+        b[i] = bias_variable(i, [nBias])
         
     return features, ref_img, w, b
 
@@ -473,7 +474,7 @@ def trainModel(NNlayer, img_data, img_shape, gpu_list, isTest=False):
         PSNR = 0.
 
         start_time = datetime.datetime.now()
-        print('Start time: %s'%str(start_time))
+        print('Start Time: %s'%str(start_time))
 
         for niter in range(nEpoch):
             if niter >0: rd_idx = 0
